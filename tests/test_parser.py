@@ -103,3 +103,21 @@ def test_live_fixture_invariants():
         assert s.dt >= "2026"
         if s.status is Status.AVAILABLE:
             assert s.buy_url and "stageuid=" in s.buy_url and "datetime=" in s.buy_url
+
+
+def test_calendar_invalid_datetime_is_skipped():
+    good = ('<a class="js-buy-tickets-btn" data-stage="main" '
+            'data-datetime="2026-11-26-19-00-00">Купить</a>')
+    bad = ('<a class="js-buy-tickets-btn" data-stage="main" '
+           'data-datetime="2026-02-30-19-00-00">Купить</a>')
+    snap = parse_show_page(f"<html><body><h1>Маскарад</h1>{bad}{good}</body></html>",
+                           URL, today=TODAY)
+    assert [s.dt for s in snap.sessions] == ["2026-11-26T19:00"]
+
+
+def test_only_calendar_invalid_datetimes_raises_parse_error():
+    bad = ('<a class="js-buy-tickets-btn" data-stage="main" '
+           'data-datetime="2026-02-30-19-00-00">Купить</a>')
+    with pytest.raises(ParseError):
+        parse_show_page(f"<html><body><h1>Маскарад</h1>{bad}</body></html>",
+                        URL, today=TODAY)

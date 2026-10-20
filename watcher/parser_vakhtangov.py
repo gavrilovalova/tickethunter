@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -23,9 +23,9 @@ def _preceding_stage_heading(el) -> str:
 
 
 def _parse_datetime(raw: str) -> str:
-    """'2026-12-26-19-00-00' -> '2026-12-26T19:00'; ValueError/IndexError if malformed."""
-    p = raw.split("-")
-    return f"{int(p[0]):04d}-{int(p[1]):02d}-{int(p[2]):02d}T{int(p[3]):02d}:{int(p[4]):02d}"
+    """'2026-12-26-19-00-00' -> '2026-12-26T19:00'; ValueError if malformed
+    (в т.ч. календарно невозможная дата вроде 2026-02-30)."""
+    return datetime.strptime(raw, "%Y-%m-%d-%H-%M-%S").strftime("%Y-%m-%dT%H:%M")
 
 
 def _title(soup: BeautifulSoup) -> str:
@@ -57,7 +57,7 @@ def parse_show_page(html: str, url: str, today: date) -> ShowSnapshot:
             continue
         try:
             dt = _parse_datetime(raw_dt)
-        except (IndexError, ValueError):
+        except ValueError:
             continue                                   # битая дата — пропускаем
 
         sold_out = ("disabled" in (a.get("class") or [])

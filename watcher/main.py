@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+from html import escape
 from pathlib import Path
 
 from . import state as state_mod
@@ -46,7 +47,7 @@ def run(tg, chat_id: str, state: dict, fetch=fetch_show, now=None) -> dict:
             if not sub["parse_error_notified"]:
                 try:
                     tg.send_message(chat_id, "⚠️ Не могу прочитать страницу "
-                                    f"«{sub['title']}» — возможно, сайт изменился")
+                                    f"«{escape(sub['title'])}» — возможно, сайт изменился")
                     sub["parse_error_notified"] = True
                 except TelegramError:
                     pass
@@ -54,21 +55,24 @@ def run(tg, chat_id: str, state: dict, fetch=fetch_show, now=None) -> dict:
         except Exception:          # сеть/5xx — тихо пропускаем цикл
             continue
 
-        sub["parse_error_notified"] = False
-        new_sessions, events = diff(sub["sessions"], snap, now)
-        for e in events:
-            text, buttons = event_message(e)
-            try:
-                tg.send_message(chat_id, text, url_buttons=buttons)
-            except TelegramError:
-                # не фиксируем статус — уведомление повторится в следующем цикле
-                key = e.session.key
-                if key in sub["sessions"]:
-                    new_sessions[key] = sub["sessions"][key]
-                else:
-                    new_sessions.pop(key, None)
-        sub["sessions"] = new_sessions
-        sub["title"] = snap.title
+        try:
+            sub["parse_error_notified"] = False
+            new_sessions, events = diff(sub["sessions"], snap, now)
+            for e in events:
+                text, buttons = event_message(e)
+                try:
+                    tg.send_message(chat_id, text, url_buttons=buttons)
+                except TelegramError:
+                    # не фиксируем статус — уведомление повторится в следующем цикле
+                    key = e.session.key
+                    if key in sub["sessions"]:
+                        new_sessions[key] = sub["sessions"][key]
+                    else:
+                        new_sessions.pop(key, None)
+            sub["sessions"] = new_sessions
+            sub["title"] = snap.title
+        except Exception:          # одна битая подписка не должна ронять весь запуск
+            continue
     return state
 
 
@@ -76,8 +80,10 @@ def main() -> None:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
     st = state_mod.load(STATE_PATH)
-    st = run(Telegram(token), chat_id, st)
-    state_mod.save(STATE_PATH, st)
+    try:
+        run(Telegram(token), chat_id, st)    # мутирует st на месте
+    finally:
+        state_mod.save(STATE_PATH, st)
 
 
 if __name__ == "__main__":

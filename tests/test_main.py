@@ -105,3 +105,38 @@ def test_send_failure_keeps_old_status_for_retry():
     tg.fail_texts = set()
     st = run(tg, CHAT, st, fetch=available_snap, now=NOW)
     assert any("появились билеты" in t for t, _ in tg.sent)
+
+
+def test_bad_subscription_does_not_block_others():
+    url2 = "https://vakhtangov.ru/show/other/"
+    st = sub_state("sold_out")
+    # первая подписка: битый dt в сохранённом сеансе и в снимке страницы
+    st["subscriptions"][URL]["sessions"]["main|2026-11-26T19:00"]["dt"] = "garbage"
+    st["subscriptions"][url2] = {
+        "title": "Другой", "added_at": "2026-10-01T00:00:00+00:00",
+        "parse_error_notified": False,
+        "sessions": {"main|2026-11-26T19:00": {
+            "status": "sold_out", "buy_url": None,
+            "stage_title": "Основная сцена", "dt": "2026-11-26T19:00"}}}
+
+    def fetch(u):
+        if u == URL:
+            return ShowSnapshot("Маскарад", URL, [
+                Session("main", "Основная сцена", "garbage", Status.AVAILABLE, BUY)])
+        return ShowSnapshot("Другой", url2, [
+            Session("main", "Основная сцена", "2026-11-26T19:00", Status.AVAILABLE, BUY)])
+
+    tg = FakeTg()
+    st = run(tg, CHAT, st, fetch=fetch, now=NOW)
+    assert len(tg.sent) == 1 and "Другой" in tg.sent[0][0]
+    assert st["subscriptions"][url2]["sessions"]["main|2026-11-26T19:00"]["status"] == "available"
+
+
+def test_parse_error_warning_escapes_title():
+    def boom(u): raise ParseError("x")
+    st = sub_state("sold_out")
+    st["subscriptions"][URL]["title"] = "A<b>&Co"
+    tg = FakeTg()
+    st = run(tg, CHAT, st, fetch=boom, now=NOW)
+    assert len(tg.sent) == 1 and "A&lt;b&gt;&amp;Co" in tg.sent[0][0]
+    assert st["subscriptions"][URL]["parse_error_notified"] is True
