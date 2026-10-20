@@ -1,86 +1,79 @@
-import re
 from datetime import date
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
 from .models import ParseError, Session, ShowSnapshot, Status
 
-MONTHS = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-          "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
-DATE_RE = re.compile(r"(\d{1,2})\s+(" + "|".join(MONTHS) + r")\b.*?(\d{1,2}):(\d{2})", re.S)
-SOLD_OUT_TEXT = "Билеты закончились"
+BUY_BTN_SELECTOR = "a.js-buy-tickets-btn"
 BUY_PATH = "/tickets/buy/"
+SOLD_OUT_WORD = "закончились"
 STAGE_WORDS = ("сцена", "зал", "арт-кафе", "амфитеатр")
+HEADINGS = ["h1", "h2", "h3", "h4", "h5"]
 
 
-def _slug(s: str) -> str:
-    return re.sub(r"[^\wа-яё]+", "-", s.lower()).strip("-") or "stage"
-
-
-def _infer_year(month: int, day: int, today: date) -> int:
-    return today.year + 1 if (month, day) < (today.month, today.day) else today.year
-
-
-def _preceding_heading(el) -> str:
-    h = el.find_previous(["h1", "h2", "h3", "h4", "h5"])
+def _preceding_stage_heading(el) -> str:
+    h = el.find_previous(HEADINGS)
     while h is not None:
         t = h.get_text(strip=True)
         if t and any(w in t.lower() for w in STAGE_WORDS):
             return t
-        h = h.find_previous(["h1", "h2", "h3", "h4", "h5"])
+        h = h.find_previous(HEADINGS)
     return ""
 
 
+def _parse_datetime(raw: str) -> str:
+    """'2026-12-26-19-00-00' -> '2026-12-26T19:00'; ValueError/IndexError if malformed."""
+    p = raw.split("-")
+    return f"{int(p[0]):04d}-{int(p[1]):02d}-{int(p[2]):02d}T{int(p[3]):02d}:{int(p[4]):02d}"
+
+
+def _title(soup: BeautifulSoup) -> str:
+    # на странице много h1: первый — логотип сайта, дальше название спектакля и пресса
+    for h1 in soup.find_all("h1"):
+        if "site-logo" not in (h1.get("class") or []):
+            t = h1.get_text(strip=True)
+            if t:
+                return t
+            break
+    og = soup.find("meta", attrs={"property": "og:title"})
+    return (og.get("content") or "").strip() if og else ""
+
+
 def parse_show_page(html: str, url: str, today: date) -> ShowSnapshot:
+    # `today` оставлен в сигнатуре для вызывающего кода, но больше не используется:
+    # сайт отдаёт полную дату в data-datetime, выводить год не нужно.
     soup = BeautifulSoup(html, "html.parser")
 
-    title_el = soup.find("h1")
-    title = title_el.get_text(strip=True) if title_el else ""
+    title = _title(soup)
     if not title:
         raise ParseError(f"не найден заголовок спектакля: {url}")
 
     sessions: dict[str, Session] = {}
-
-    # доступные сеансы — по ссылкам на покупку
-    for a in soup.find_all("a", href=True):
-        if BUY_PATH not in a["href"]:
+    for a in soup.select(BUY_BTN_SELECTOR):
+        stage = (a.get("data-stage") or "").strip()
+        raw_dt = (a.get("data-datetime") or "").strip()
+        if not stage or not raw_dt:
             continue
-        buy_url = urljoin(url, a["href"])
-        qs = parse_qs(urlparse(buy_url).query)
         try:
-            stage = qs["stageuid"][0]
-            p = qs["datetime"][0].split("-")          # 2026-12-26-19-00-00
-            dt = f"{int(p[0]):04d}-{int(p[1]):02d}-{int(p[2]):02d}T{int(p[3]):02d}:{int(p[4]):02d}"
-        except (KeyError, IndexError, ValueError):
-            continue                                   # битая/чужая ссылка — пропускаем
-        s = Session(stage=stage, stage_title=_preceding_heading(a), dt=dt,
-                    status=Status.AVAILABLE, buy_url=buy_url)
-        sessions[s.key] = s
+            dt = _parse_datetime(raw_dt)
+        except (IndexError, ValueError):
+            continue                                   # битая дата — пропускаем
 
-    # распроданные сеансы — по тексту «Билеты закончились»
-    for text_node in soup.find_all(string=lambda t: t and SOLD_OUT_TEXT in t):
-        node = text_node.find_parent()
-        m = None
-        for _ in range(6):                             # поднимаемся до контейнера с датой
-            if node is None:
-                break
-            m = DATE_RE.search(node.get_text(" ", strip=True))
-            if m:
-                break
-            node = node.find_parent()
-        if not m:
-            raise ParseError(f"есть «{SOLD_OUT_TEXT}», но не найдена дата рядом: {url}")
-        day, month = int(m.group(1)), MONTHS[m.group(2)]
-        dt = (f"{_infer_year(month, day, today):04d}-{month:02d}-{day:02d}"
-              f"T{int(m.group(3)):02d}:{int(m.group(4)):02d}")
-        stage_title = _preceding_heading(text_node.parent)
-        dup = any(s.dt == dt and s.stage_title == stage_title
-                  and s.status is Status.AVAILABLE for s in sessions.values())
-        if not dup:
-            s = Session(stage=_slug(stage_title), stage_title=stage_title,
-                        dt=dt, status=Status.SOLD_OUT)
-            sessions.setdefault(s.key, s)
+        sold_out = ("disabled" in (a.get("class") or [])
+                    or SOLD_OUT_WORD in a.get_text(strip=True).lower())
+        buy_url = None
+        if not sold_out:
+            href = a.get("href") or ""
+            if BUY_PATH in href:
+                buy_url = urljoin(url, href)
+            else:
+                buy_url = urljoin(url, f"{BUY_PATH}?stageuid={stage}&datetime={raw_dt}")
+
+        s = Session(stage=stage, stage_title=_preceding_stage_heading(a), dt=dt,
+                    status=Status.SOLD_OUT if sold_out else Status.AVAILABLE,
+                    buy_url=buy_url)
+        sessions[s.key] = s
 
     if not sessions:
         raise ParseError(f"не найдено ни одного сеанса: {url}")
