@@ -6,7 +6,7 @@ from pathlib import Path
 from . import state as state_mod
 from .commands import handle_update
 from .engine import diff
-from .fetch import fetch_show
+from .fetch import fetch_availability, fetch_show
 from .models import ParseError
 from .telegram import Telegram, TelegramError
 from .texts import event_message
@@ -15,7 +15,20 @@ MSK = timezone(timedelta(hours=3))
 STATE_PATH = Path(__file__).resolve().parent.parent / "state.json"
 
 
-def run(tg, chat_id: str, state: dict, fetch=fetch_show, now=None) -> dict:
+def _default_fetch():
+    """fetch(url) с одним data.json на весь запуск (он общий для всех страниц)."""
+    cache: dict = {}
+
+    def fetch(url: str):
+        if "availability" not in cache:
+            cache["availability"] = fetch_availability()
+        return fetch_show(url, availability=cache["availability"])
+
+    return fetch
+
+
+def run(tg, chat_id: str, state: dict, fetch=None, now=None) -> dict:
+    fetch = fetch or _default_fetch()
     now = now or datetime.now(MSK).replace(tzinfo=None)
 
     # 1. команды из Telegram

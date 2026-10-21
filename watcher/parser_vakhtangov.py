@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -40,9 +40,31 @@ def _title(soup: BeautifulSoup) -> str:
     return (og.get("content") or "").strip() if og else ""
 
 
-def parse_show_page(html: str, url: str, today: date) -> ShowSnapshot:
-    # `today` оставлен в сигнатуре для вызывающего кода, но больше не используется:
-    # сайт отдаёт полную дату в data-datetime, выводить год не нужно.
+def entry_available(entry: dict | None) -> bool:
+    """Доступен ли сеанс по записи из /ticketland_afisha/data.json.
+
+    В data.json попадают только сеансы, на которые есть билеты; распроданные
+    просто отсутствуют. Дополнительно сверяем has_tickets, sales_on и то,
+    что продажи уже открылись (reveal_dt <= серверного now; формат обеих
+    строк 'YYYY-MM-DD HH:MM:SS' сравнивается лексикографически).
+    """
+    if not entry or not entry.get("has_tickets") or entry.get("sales_on") is False:
+        return False
+    reveal, now = entry.get("reveal_dt"), entry.get("now")
+    if reveal and now and str(reveal) > str(now):
+        return False  # продажи ещё не открылись
+    return True
+
+
+def parse_show_page(html: str, url: str, availability: dict) -> ShowSnapshot:
+    """availability: распарсенный data.json — {stage_uid: {raw_datetime: entry}}.
+
+    Server-HTML рендерит ВСЕ кнопки как «Купить билеты»; реальный статус
+    дорисовывает JS по data.json, поэтому статус берём из availability по
+    точному совпадению (data-stage, data-datetime), как делает скрипт сайта.
+    Класс disabled/текст «закончились» учитываем как перестраховку, если
+    сайт когда-нибудь начнёт рендерить статус на сервере.
+    """
     soup = BeautifulSoup(html, "html.parser")
 
     title = _title(soup)
@@ -60,8 +82,11 @@ def parse_show_page(html: str, url: str, today: date) -> ShowSnapshot:
         except ValueError:
             continue                                   # битая дата — пропускаем
 
-        sold_out = ("disabled" in (a.get("class") or [])
-                    or SOLD_OUT_WORD in a.get_text(strip=True).lower())
+        marked_sold = ("disabled" in (a.get("class") or [])
+                       or SOLD_OUT_WORD in a.get_text(strip=True).lower())
+        entry = (availability.get(stage) or {}).get(raw_dt)
+        sold_out = marked_sold or not entry_available(entry)
+
         buy_url = None
         if not sold_out:
             href = a.get("href") or ""
