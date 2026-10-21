@@ -1,4 +1,24 @@
 {
-  "subscriptions": {},
-  "telegram_offset": 0
+  "subscriptions": {
+    "https://vakhtangov.ru/show/maskarade/": {
+      "added_at": "2026-10-21T10:18:31+00:00",
+      "parse_error_notified": false,
+      "sessions": {
+        "main|2026-11-26T19:00": {
+          "buy_url": "https://vakhtangov.ru/tickets/buy/?stageuid=main&datetime=2026-11-26-19-00-00",
+          "dt": "2026-11-26T19:00",
+          "stage_title": "Основная сцена",
+          "status": "available"
+        },
+        "main|2026-12-26T19:00": {
+          "buy_url": "https://vakhtangov.ru/tickets/buy/?stageuid=main&datetime=2026-12-26-19-00-00",
+          "dt": "2026-12-26T19:00",
+          "stage_title": "Основная сцена",
+          "status": "available"
+        }
+      },
+      "title": "Маскарад"
+    }
+  },
+  "telegram_offset": 653600323
 }
