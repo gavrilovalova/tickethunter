@@ -2,7 +2,7 @@ import json
 
 import httpx
 
-from .models import ParseError, ShowSnapshot
+from .models import AvailabilityError, ShowSnapshot
 from .parser_vakhtangov import parse_show_page
 
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -27,9 +27,12 @@ def fetch_availability(client: httpx.Client | None = None) -> dict:
     try:
         data = json.loads(r.json()["data"])
     except (ValueError, KeyError, TypeError) as e:
-        raise ParseError(f"data.json изменил структуру: {e}") from None
-    if not isinstance(data, dict):
-        raise ParseError("data.json изменил структуру: ожидался объект")
+        raise AvailabilityError(f"data.json изменил структуру: {e}") from None
+    if not isinstance(data, dict) or not data:
+        # пустой data.json почти наверняка глюк генерации на сайте: принять его
+        # за чистую монету значило бы счесть ВСЁ распроданным, а следующим
+        # циклом разослать ложные «появились билеты» по каждому сеансу
+        raise AvailabilityError("data.json пуст или не объект")
     return data
 
 

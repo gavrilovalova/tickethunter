@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -40,23 +40,38 @@ def _title(soup: BeautifulSoup) -> str:
     return (og.get("content") or "").strip() if og else ""
 
 
-def entry_available(entry: dict | None) -> bool:
+MSK = timezone(timedelta(hours=3))
+
+
+def _now_msk() -> datetime:
+    return datetime.now(MSK).replace(tzinfo=None)
+
+
+def entry_available(entry: dict | None, now: datetime | None = None) -> bool:
     """Доступен ли сеанс по записи из /ticketland_afisha/data.json.
 
-    В data.json попадают только сеансы, на которые есть билеты; распроданные
-    просто отсутствуют. Дополнительно сверяем has_tickets, sales_on и то,
-    что продажи уже открылись (reveal_dt <= серверного now; формат обеих
-    строк 'YYYY-MM-DD HH:MM:SS' сравнивается лексикографически).
+    Повторяет логику скрипта сайта один в один: кнопка «Купить» показывается,
+    если запись существует, has_tickets истинно и продажи уже открылись
+    (reveal_dt <= текущего московского времени). В data.json попадают только
+    сеансы с билетами; распроданные просто отсутствуют. Кривой reveal_dt
+    трактуем как «продажи открыты» (fail open): ложное «появились билеты»
+    дешевле пропущенных настоящих.
     """
-    if not entry or not entry.get("has_tickets") or entry.get("sales_on") is False:
+    if not isinstance(entry, dict) or not entry.get("has_tickets"):
         return False
-    reveal, now = entry.get("reveal_dt"), entry.get("now")
-    if reveal and now and str(reveal) > str(now):
-        return False  # продажи ещё не открылись
+    reveal = entry.get("reveal_dt")
+    if reveal:
+        try:
+            reveal_dt = datetime.strptime(str(reveal), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return True
+        if reveal_dt > (now or _now_msk()):
+            return False  # продажи ещё не открылись
     return True
 
 
-def parse_show_page(html: str, url: str, availability: dict) -> ShowSnapshot:
+def parse_show_page(html: str, url: str, availability: dict,
+                    now: datetime | None = None) -> ShowSnapshot:
     """availability: распарсенный data.json — {stage_uid: {raw_datetime: entry}}.
 
     Server-HTML рендерит ВСЕ кнопки как «Купить билеты»; реальный статус
@@ -84,8 +99,9 @@ def parse_show_page(html: str, url: str, availability: dict) -> ShowSnapshot:
 
         marked_sold = ("disabled" in (a.get("class") or [])
                        or SOLD_OUT_WORD in a.get_text(strip=True).lower())
-        entry = (availability.get(stage) or {}).get(raw_dt)
-        sold_out = marked_sold or not entry_available(entry)
+        stage_entries = availability.get(stage)
+        entry = stage_entries.get(raw_dt) if isinstance(stage_entries, dict) else None
+        sold_out = marked_sold or not entry_available(entry, now)
 
         buy_url = None
         if not sold_out:

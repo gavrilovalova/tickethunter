@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from html import escape
 
-from .models import ParseError, Session
+from .models import AvailabilityError, ParseError, Session
 from .texts import human_dt
 
 SHOW_URL_RE = re.compile(r"https?://(?:www\.)?vakhtangov\.ru/show/([\w-]+)/?")
@@ -59,6 +59,9 @@ def handle_update(update: dict, state: dict, my_chat_id: str, fetch_show) -> lis
             return [Reply(f"Уже слежу за «{escape(subs[url]['title'])}»")]
         try:
             snap = fetch_show(url)
+        except AvailabilityError:
+            return [Reply("Сайт театра отдаёт данные о билетах в неожиданном "
+                          "формате — попробуй ещё раз позже")]
         except ParseError:
             return [Reply("Открыла страницу, но не смогла её прочитать — проверь ссылку")]
         except Exception:

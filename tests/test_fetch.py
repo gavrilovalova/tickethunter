@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from watcher.fetch import DATA_URL, fetch_availability, fetch_show
-from watcher.models import ParseError, Status
+from watcher.models import AvailabilityError, Status
 
 SHOW_URL = "https://vakhtangov.ru/show/maskarade/"
 
@@ -32,10 +32,17 @@ def test_fetch_availability_parses_nested_json():
     assert fetch_availability(make_client(handler)) == INNER
 
 
-def test_fetch_availability_bad_structure_raises_parse_error():
+@pytest.mark.parametrize("payload", [
+    {"data": '"не объект"'},   # не словарь
+    {"data": "{}"},            # пустой словарь — почти наверняка глюк генерации
+    {"data": "[]"},            # php-стиль пустого объекта
+    {"нет": "ключа data"},
+    {"data": "не json"},
+])
+def test_fetch_availability_bad_structure_raises(payload):
     def handler(request):
-        return httpx.Response(200, json={"data": '"не объект"'})
-    with pytest.raises(ParseError):
+        return httpx.Response(200, json=payload)
+    with pytest.raises(AvailabilityError):
         fetch_availability(make_client(handler))
 
 

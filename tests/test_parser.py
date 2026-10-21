@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -53,14 +54,21 @@ def test_status_comes_from_availability_not_from_buttons():
 
 
 def test_entry_available_rules():
-    assert entry_available(ok_entry()) is True
-    assert entry_available(None) is False                      # нет записи = распродано
-    assert entry_available(ok_entry(has_tickets=False)) is False
-    assert entry_available(ok_entry(sales_on=False)) is False
-    # продажи ещё не открылись: reveal в будущем относительно серверного now
-    assert entry_available(ok_entry(reveal_dt="2026-12-01 15:00:00")) is False
-    # нет reveal_dt/now — считаем открытыми
-    assert entry_available(ok_entry(reveal_dt=None, now=None)) is True
+    now = datetime(2026, 10, 21, 13, 19, 11)
+    assert entry_available(ok_entry(), now) is True
+    assert entry_available(None, now) is False                 # нет записи = распродано
+    assert entry_available(ok_entry(has_tickets=False), now) is False
+    # sales_on сайт НЕ проверяет — и мы не проверяем (иначе можно пропустить билеты)
+    assert entry_available(ok_entry(sales_on=False), now) is True
+    # продажи ещё не открылись: reveal в будущем
+    assert entry_available(ok_entry(reveal_dt="2026-12-01 15:00:00"), now) is False
+    # граница: reveal ровно сейчас — продажи открыты
+    assert entry_available(ok_entry(reveal_dt="2026-10-21 13:19:11"), now) is True
+    # нет reveal_dt — считаем открытыми; кривой reveal_dt — fail open
+    assert entry_available(ok_entry(reveal_dt=None), now) is True
+    assert entry_available(ok_entry(reveal_dt="скоро"), now) is True
+    # не-словарь вместо записи — распродано, а не исключение
+    assert entry_available(["мусор"], now) is False
 
 
 def test_disabled_class_overrides_availability():

@@ -1,7 +1,7 @@
 import pytest
 
 from watcher.commands import Reply, handle_update
-from watcher.models import ParseError, Session, ShowSnapshot, Status
+from watcher.models import AvailabilityError, ParseError, Session, ShowSnapshot, Status
 
 CHAT = "111"
 URL = "https://vakhtangov.ru/show/maskarade/"
@@ -49,8 +49,12 @@ def test_subscribe_fetch_errors_reported():
     st = fresh_state()
     def boom_parse(u): raise ParseError("x")
     def boom_net(u): raise OSError("x")
+    def boom_avail(u): raise AvailabilityError("x")
     assert "не смогла" in handle_update(msg(URL), st, CHAT, boom_parse)[0].text
     assert "попробуй" in handle_update(msg(URL), st, CHAT, boom_net)[0].text
+    # сломанный data.json — не повод говорить «проверь ссылку»
+    reply = handle_update(msg(URL), st, CHAT, boom_avail)[0].text
+    assert "ссылк" not in reply and "позже" in reply
     assert st["subscriptions"] == {}
 
 

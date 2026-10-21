@@ -40,3 +40,8 @@ class Event:
 
 class ParseError(Exception):
     pass
+
+
+class AvailabilityError(ParseError):
+    """data.json (источник правды о билетах) недоступен по смыслу:
+    пустой или неожиданной структуры."""
