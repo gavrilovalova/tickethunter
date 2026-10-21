@@ -5,20 +5,20 @@
       "parse_error_notified": false,
       "sessions": {
         "main|2026-11-26T19:00": {
-          "buy_url": "https://vakhtangov.ru/tickets/buy/?stageuid=main&datetime=2026-11-26-19-00-00",
+          "buy_url": null,
           "dt": "2026-11-26T19:00",
           "stage_title": "Основная сцена",
-          "status": "available"
+          "status": "sold_out"
         },
         "main|2026-12-26T19:00": {
-          "buy_url": "https://vakhtangov.ru/tickets/buy/?stageuid=main&datetime=2026-12-26-19-00-00",
+          "buy_url": null,
           "dt": "2026-12-26T19:00",
           "stage_title": "Основная сцена",
-          "status": "available"
+          "status": "sold_out"
         }
       },
       "title": "Маскарад"
     }
   },
-  "telegram_offset": 653600323
+  "telegram_offset": 653600325
 }
