@@ -15,6 +15,12 @@
           "dt": "2026-12-26T19:00",
           "stage_title": "Основная сцена",
           "status": "sold_out"
+        },
+        "main|2027-01-23T19:00": {
+          "buy_url": null,
+          "dt": "2027-01-23T19:00",
+          "stage_title": "Основная сцена",
+          "status": "sold_out"
         }
       },
       "title": "Маскарад"
