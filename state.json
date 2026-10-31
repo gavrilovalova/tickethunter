@@ -17,10 +17,10 @@
           "status": "sold_out"
         },
         "main|2027-01-23T19:00": {
-          "buy_url": null,
+          "buy_url": "https://vakhtangov.ru/tickets/buy/?stageuid=main&datetime=2027-01-23-19-00-00",
           "dt": "2027-01-23T19:00",
           "stage_title": "Основная сцена",
-          "status": "sold_out"
+          "status": "available"
         }
       },
       "title": "Маскарад"
